@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI智能记账本</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background-color: #f4f6f9; font-family: system-ui, -apple-system, sans-serif; }
+        .sidebar { position: fixed; left: 0; top: 0; width: 260px; height: 100vh; background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%); color: #fff; padding: 20px 0; z-index: 1000; }
+        .sidebar-logo { padding: 0 20px 20px 20px; border-bottom: 1px solid #334155; margin-bottom: 20px; }
+        .sidebar-logo h3 { font-size: 1.3rem; font-weight: bold; margin: 0; }
+        .sidebar-nav { list-style: none; padding: 0; margin: 0; }
+        .sidebar-nav li { margin-bottom: 5px; }
+        .sidebar-nav .nav-link { display: flex; align-items: center; padding: 12px 20px; color: #cbd5e1; text-decoration: none; cursor: pointer; }
+        .sidebar-nav .nav-link:hover { background: #334155; color: #fff; }
+        .sidebar-nav .nav-link.active { background: #0d6efd; color: #fff; }
+        .sidebar-nav .nav-link i { margin-right: 12px; width: 24px; text-align: center; }
+        .main-content { margin-left: 260px; padding: 20px 30px; min-height: 100vh; }
+        .card { border: none; border-radius: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); margin-bottom: 24px; background: #fff; }
+        .card-header { background: transparent; border-bottom: 1px solid #eef2f6; padding: 16px 20px; font-weight: 600; }
+        .upload-zone { border: 2px dashed #cbd5e1; border-radius: 16px; padding: 40px; text-align: center; background: #fafbfc; cursor: pointer; }
+        .upload-zone:hover { border-color: #0d6efd; background: #f0f7ff; }
+        .hidden { display: none !important; }
+        #chart { width: 100%; height: 350px; }
+        .user-info { background: #fff; border-radius: 12px; padding: 12px 20px; margin-bottom: 20px; display: flex; justify-content: space-between; }
+        .budget-number { font-size: 24px; font-weight: bold; margin: 0; }
+        .budget-label { color: #6c757d; font-size: 14px; margin-bottom: 5px; }
+        .modal-mask { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; display: flex; align-items: center; justify-content: center; }
+        .modal-container { background: #fff; border-radius: 16px; padding: 24px; max-width: 320px; width: 90%; text-align: center; }
+        .cat-buttons { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; justify-content: center; }
+        .remark-input { width: 100%; padding: 6px 10px; margin-top: 8px; border: 1px solid #ced4da; border-radius: 6px; }
+        .stat-card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 12px; padding: 15px; text-align: center; }
+        .stat-number { font-size: 28px; font-weight: bold; }
+        .stat-label { font-size: 12px; opacity: 0.9; margin-top: 5px; }
+        .expense-row { color: #dc2626; }
+        .income-row { color: #10b981; }
+        .badge-expense { background-color: #fee2e2; color: #dc2626; padding: 2px 8px; border-radius: 20px; font-size: 12px; }
+        .badge-income { background-color: #d1fae5; color: #10b981; padding: 2px 8px; border-radius: 20px; font-size: 12px; }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <div class="sidebar-logo"><h3>📝 AI记账本</h3></div>
+    <ul class="sidebar-nav">
+        <li><a class="nav-link active" onclick="switchTab('tab-accounting', this)"><i>🤖</i> AI智能记账</a></li>
+        <li><a class="nav-link" onclick="switchTab('tab-finance', this)"><i>📊</i> 财务管理</a></li>
+        <li><a class="nav-link" onclick="switchTab('tab-monthly', this)"><i>📅</i> 月度支出查询</a></li>
+        <li><a class="nav-link" onclick="switchTab('tab-settings', this)"><i>⚙️</i> 账户管理</a></li>
+        <li><a class="nav-link" href="/logout"><i>🚪</i> 退出登录</a></li>
+    </ul>
+</div>
+
+<div class="main-content">
+    <div class="user-info">
+        <span>👤 当前用户：<strong id="username-display">加载中...</strong></span>
+        <span class="text-muted small">📅 数据本地存储</span>
+    </div>
+
+    <!-- ========== 页面1: AI智能记账（支出） ========== -->
+    <div id="tab-accounting" class="tab-content">
+        <div class="card">
+            <div class="card-header">📸 上传账单截图 <span class="badge-expense ms-2">支出</span></div>
+            <div class="card-body">
+                <div class="upload-zone" id="drop-zone">
+                    <input type="file" id="file-input" accept="image/*" class="hidden">
+                    <div id="upload-placeholder">
+                        <h4 class="text-muted mb-2">📤 点击或拖拽图片</h4>
+                        <p class="small text-muted">支持微信/支付宝账单截图（支出）</p>
+                    </div>
+                    <img id="preview-img" class="img-fluid mt-3 hidden rounded" style="max-height: 200px;">
+                </div>
+                <div class="mt-3 text-center">
+                    <button class="btn btn-primary px-4 py-2" id="btn-ocr" disabled>✨ 开始识别</button>
+                    <div id="ocr-loading" class="hidden mt-2"><div class="spinner-border spinner-border-sm"></div> 识别中...</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="ocr-result-card" class="card hidden">
+            <div class="card-header bg-light">📋 识别结果</div>
+            <div class="card-body">
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6"><label>💰 金额</label><input type="number" class="form-control" id="res-amount" readonly></div>
+                    <div class="col-md-6"><label>🏪 商户</label><input type="text" class="form-control" id="res-merchant" readonly></div>
+                </div>
+                <div class="d-flex align-items-center justify-content-between gap-3">
+                    <div class="flex-grow-1">
+                        <div class="text-muted small">🤖 AI推荐分类</div>
+                        <div id="ai-cat-display" class="fw-bold fs-5 text-primary">-</div>
+                    </div>
+                    <button class="btn btn-outline-secondary" id="btn-manual-cat">✏️ 手动分类</button>
+                </div>
+                <div class="mt-3">
+                    <button class="btn btn-success w-100" id="btn-save-ocr">✅ 确认保存（支出）</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-7"><div class="card"><div class="card-header">📊 本月支出分布</div><div class="card-body"><div id="chart"></div></div></div></div>
+            <div class="col-md-5"><div class="card"><div class="card-header">💡 AI理财建议</div><div class="card-body"><div id="ai-suggestion" class="alert alert-light border">加载中...</div></div></div></div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">📝 近期支出账单</div>
+            <div class="card-body p-0">
+                <table class="table table-hover mb-0" id="history-table">
+                    <thead><tr><th>日期</th><th>商户</th><th>分类</th><th class="text-end">金额</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 页面2: 财务管理（预算 + 收入） ========== -->
+    <div id="tab-finance" class="tab-content hidden">
+        <!-- 预算卡片 -->
+        <div class="card">
+            <div class="card-header">💰 预算设置 <span class="badge-expense ms-2">支出控制</span></div>
+            <div class="card-body">
+                <form id="budget-form" class="row g-3 mb-4">
+                    <div class="col-md-3"><label>总预算(元)</label><input type="number" class="form-control" id="b-total" value="3000"></div>
+                    <div class="col-md-3"><label>餐饮</label><input type="number" class="form-control" id="b-food" value="1000"></div>
+                    <div class="col-md-3"><label>交通</label><input type="number" class="form-control" id="b-trans" value="300"></div>
+                    <div class="col-md-3"><label>购物</label><input type="number" class="form-control" id="b-shop" value="500"></div>
+                    <div class="col-12"><button type="submit" class="btn btn-primary w-100">保存预算</button></div>
+                </form>
+                <hr>
+                <div class="row text-center">
+                    <div class="col-4"><div class="budget-label">总预算</div><div class="budget-number text-primary" id="prog-total">--</div></div>
+                    <div class="col-4"><div class="budget-label">已花费</div><div class="budget-number text-danger" id="prog-spend">--</div></div>
+                    <div class="col-4"><div class="budget-label">剩余</div><div class="budget-number text-success" id="prog-remain">--</div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 收入记录 -->
+        <div class="card">
+            <div class="card-header">💰 收入记录 <span class="badge-income ms-2">收入</span></div>
+            <div class="card-body">
+                <form id="income-form" class="row g-3 mb-4">
+                    <div class="col-md-3">
+                        <label class="form-label">金额</label>
+                        <input type="number" step="0.01" class="form-control" id="income-amount" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">收入分类</label>
+                        <select class="form-select" id="income-category">
+                            <option value="工资">💰 工资</option>
+                            <option value="兼职">💼 兼职</option>
+                            <option value="奖金">🎁 奖金</option>
+                            <option value="红包">🧧 红包</option>
+                            <option value="理财收益">📈 理财收益</option>
+                            <option value="报销">📄 报销</option>
+                            <option value="退款">↩️ 退款</option>
+                            
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">备注</label>
+                        <input type="text" class="form-control" id="income-remark" placeholder="可选">
+                    </div>
+                    <div class="col-md-3 d-flex align-items-end">
+                        <button type="submit" class="btn btn-success w-100">➕ 添加收入</button>
+                    </div>
+                </form>
+                <hr>
+                <h6 class="fw-bold">📊 本月收入统计</h6>
+                <div id="income-stats" class="mb-2 fw-bold text-success">加载中...</div>
+                <h6 class="fw-bold mt-3">📋 收入记录</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm" id="income-table">
+                        <thead class="table-light">
+                            <tr><th>日期</th><th>分类</th><th>金额</th><th>备注</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td colspan="4" class="text-center">暂无收入记录</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 页面3: 月度支出查询（只显示支出） ========== -->
+    <div id="tab-monthly" class="tab-content hidden">
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="stat-card">
+                    <div class="stat-number" id="month-total-display">¥0</div>
+                    <div class="stat-label">本月总支出</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="stat-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                    <div class="stat-number" id="month-avg-display">¥0</div>
+                    <div class="stat-label">日均支出</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="stat-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                    <div class="stat-number" id="month-max-display">¥0</div>
+                    <div class="stat-label">单笔最高支出</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">📅 按日期查询支出</div>
+            <div class="card-body">
+                <div class="input-group mb-3" style="max-width: 300px;">
+                    <input type="date" class="form-control" id="view-date">
+                    <button class="btn btn-primary" onclick="loadDailyBills()">查询</button>
+                </div>
+                <h6>当日总支出: <span id="daily-total" class="fw-bold text-danger">0.00</span></h6>
+                <div class="table-responsive">
+                    <table class="table table-sm" id="daily-table">
+                        <thead class="table-light">
+                            <tr><th>日期</th><th>商户</th><th>分类</th><th>金额</th><th>备注</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td colspan="5" class="text-center">请选择日期</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">📆 按月份查询支出</div>
+            <div class="card-body">
+                <div class="row g-3 mb-4">
+                    <div class="col-auto">
+                        <input type="number" class="form-control" id="m-year" placeholder="年" style="width: 100px;">
+                    </div>
+                    <div class="col-auto">
+                        <input type="number" class="form-control" id="m-month" placeholder="月" style="width: 100px;">
+                    </div>
+                    <div class="col-auto">
+                        <button class="btn btn-primary" onclick="loadMonthlyBills()">查询</button>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>📊 月度支出明细</h6>
+                        <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                            <table class="table table-sm" id="month-table">
+                                <thead class="table-light">
+                                    <tr><th>日期</th><th>商户</th><th>分类</th><th>金额</th><th>备注</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td colspan="5" class="text-center">请选择月份</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>📈 月度支出趋势</h6>
+                        <div id="monthly-trend-chart" style="height: 350px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 页面4: 账户管理 ========== -->
+    <div id="tab-settings" class="tab-content hidden">
+        <div class="card" style="max-width: 500px;">
+            <div class="card-header">⚙️ 账户信息</div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">用户名</label>
+                    <input type="text" class="form-control" id="acc-username" disabled>
+                </div>
+                <hr>
+                <div class="alert alert-info small">🔐 账单数据仅您可见</div>
+                <a href="/logout" class="btn btn-outline-danger w-100">退出登录</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentFile = null;
+
+    // 收入分类列表（全局使用）
+    const INCOME_CATEGORIES = ['工资', '兼职', '奖金', '红包', '理财收益', '报销', '退款'];
+    // 支出分类列表
+    const EXPENSE_CATEGORIES = ['餐饮', '交通', '购物', '娱乐', '学习', '医疗', '生活费用','旅游','饮品','零食','水果','烟酒','护理','其他'];
+
+    function switchTab(tabId, el) {
+        document.querySelectorAll('.tab-content').forEach(t => t.classList.add('hidden'));
+        document.getElementById(tabId).classList.remove('hidden');
+        document.querySelectorAll('.sidebar-nav .nav-link').forEach(l => l.classList.remove('active'));
+        if(el) el.classList.add('active');
+        if(tabId === 'tab-accounting') loadData();
+        if(tabId === 'tab-finance') { loadBudget(); loadIncome(); }
+        if(tabId === 'tab-monthly') { loadDailyBills(); loadMonthlyBills(); loadMonthlyTrend(); }
+        if(tabId === 'tab-settings') loadUser();
+    }
+
+    function showRemarkModal(defaultCategory) {
+        return new Promise((resolve) => {
+            const modal = document.createElement('div');
+            modal.className = 'modal-mask';
+            modal.innerHTML = `
+                <div class="modal-container">
+                    <h5>✏️ 添加备注</h5>
+                    <div class="text-start mb-3">
+                        <div>📌 分类：<strong>${defaultCategory}</strong></div>
+                        <label class="form-label small mt-2">📝 备注（可选）</label>
+                        <input type="text" id="remark-input" class="remark-input" placeholder="例如：共享单车、午餐、买书">
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-primary flex-grow-1" id="confirm">✅ 保存</button>
+                        <button class="btn btn-secondary flex-grow-1" id="cancel">取消</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            modal.querySelector('#confirm').onclick = () => {
+                const remark = modal.querySelector('#remark-input').value;
+                resolve(remark);
+                modal.remove();
+            };
+            modal.querySelector('#cancel').onclick = () => {
+                resolve(null);
+                modal.remove();
+            };
+        });
+    }
+
+    function showManualCategoryModal() {
+        return new Promise((resolve) => {
+            const modal = document.createElement('div');
+            modal.className = 'modal-mask';
+            modal.innerHTML = `
+                <div class="modal-container">
+                    <h5>✏️ 手动选择分类</h5>
+                    <div class="cat-buttons">
+                        ${EXPENSE_CATEGORIES.map(c => `<button class="btn btn-outline-primary" data-cat="${c}">${c}</button>`).join('')}
+                    </div>
+                    <div class="mt-3">
+                        <label class="form-label small">📝 备注（可选）</label>
+                        <input type="text" id="manual-remark" class="remark-input" placeholder="例如：共享单车、午餐">
+                    </div>
+                    <button class="btn btn-secondary w-100 mt-2" id="cancel">取消</button>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            modal.querySelectorAll('[data-cat]').forEach(btn => {
+                btn.onclick = () => {
+                    const remark = modal.querySelector('#manual-remark').value;
+                    resolve({
+                        category: btn.getAttribute('data-cat'),
+                        remark: remark
+                    });
+                    modal.remove();
+                };
+            });
+            modal.querySelector('#cancel').onclick = () => {
+                resolve(null);
+                modal.remove();
+            };
+        });
+    }
+
+    // 保存支出（type='expense'）
+    async function saveExpense(amount, merchant, category, remark) {
+        const res = await fetch('/api/save_bill', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                amount: Math.abs(parseFloat(amount)),
+                merchant: merchant,
+                category: category,
+                remark: remark || '',
+                date: new Date().toISOString().split('T')[0],
+                type: 'expense'  // 明确标记为支出
+            })
+        });
+        return res.ok;
+    }
+
+    // 保存收入（type='income'）
+    async function saveIncome(amount, category, remark) {
+        const res = await fetch('/api/save_bill', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                amount: Math.abs(parseFloat(amount)),
+                merchant: '收入',
+                category: category,
+                remark: remark || '',
+                date: new Date().toISOString().split('T')[0],
+                type: 'income'  // 明确标记为收入
+            })
+        });
+        return res.ok;
+    }
+
+    function afterSave(msg) {
+        alert(msg);
+        document.getElementById('ocr-result-card').classList.add('hidden');
+        document.getElementById('upload-placeholder').classList.remove('hidden');
+        previewImg.classList.add('hidden');
+        fileInput.value = '';
+        currentFile = null;
+        window.lastOcrData = null;
+        loadData();
+        loadBudget();
+        if(document.getElementById('tab-monthly').classList.contains('hidden') === false) {
+            loadDailyBills();
+            loadMonthlyBills();
+            loadMonthlyTrend();
+        }
+        loadIncome();
+    }
+
+    const dropZone = document.getElementById('drop-zone'), fileInput = document.getElementById('file-input'), previewImg = document.getElementById('preview-img'), uploadPlaceholder = document.getElementById('upload-placeholder'), btnOcr = document.getElementById('btn-ocr');
+    dropZone.onclick = () => fileInput.click();
+    dropZone.ondragover = e => { e.preventDefault(); dropZone.classList.add('dragover'); };
+    dropZone.ondragleave = () => dropZone.classList.remove('dragover');
+    dropZone.ondrop = e => { e.preventDefault(); dropZone.classList.remove('dragover'); if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); };
+    fileInput.onchange = e => { if(e.target.files[0]) handleFile(e.target.files[0]); };
+
+    function handleFile(file) {
+        currentFile = file;
+        const reader = new FileReader();
+        reader.onload = e => { 
+            previewImg.src = e.target.result; 
+            previewImg.classList.remove('hidden'); 
+            uploadPlaceholder.classList.add('hidden'); 
+            btnOcr.disabled = false; 
+        };
+        reader.readAsDataURL(file);
+    }
+
+    btnOcr.onclick = async () => {
+        if(!currentFile) return;
+        btnOcr.disabled = true;
+        document.getElementById('ocr-loading').classList.remove('hidden');
+        const fd = new FormData();
+        fd.append('image', currentFile);
+        try {
+            const res = await fetch('/api/ocr', { method: 'POST', body: fd });
+            const data = await res.json();
+            if(res.status !== 200) throw new Error(data.error);
+            if(!data.amount) { alert('未识别到金额'); return; }
+            document.getElementById('res-amount').value = data.amount;
+            document.getElementById('res-merchant').value = data.merchant || '未知商户';
+            let aiCat = data.category || '其他';
+            if(INCOME_CATEGORIES.includes(aiCat)) aiCat = '其他';
+            document.getElementById('ai-cat-display').innerText = aiCat;
+            window.lastOcrData = {
+                amount: data.amount,
+                merchant: data.merchant,
+                aiCat: aiCat
+            };
+            document.getElementById('upload-placeholder').classList.add('hidden');
+            previewImg.classList.add('hidden');
+            document.getElementById('ocr-result-card').classList.remove('hidden');
+        } catch(e) {
+            console.error(e);
+            alert('识别失败');
+        } finally {
+            document.getElementById('ocr-loading').classList.add('hidden');
+            btnOcr.disabled = false;
+            currentFile = null;
+            fileInput.value = '';
+        }
+    };
+
+    document.getElementById('btn-save-ocr').onclick = async () => {
+        if(!window.lastOcrData) return;
+        const remark = await showRemarkModal(window.lastOcrData.aiCat);
+        if(remark === null) return;
+        const ok = await saveExpense(window.lastOcrData.amount, window.lastOcrData.merchant, window.lastOcrData.aiCat, remark);
+        if(ok) afterSave('支出保存成功');
+        else alert('保存失败');
+    };
+
+    document.getElementById('btn-manual-cat').onclick = async () => {
+        if(!window.lastOcrData) return;
+        const result = await showManualCategoryModal();
+        if(!result) return;
+        const ok = await saveExpense(window.lastOcrData.amount, window.lastOcrData.merchant, result.category, result.remark);
+        if(ok) afterSave('已手动分类并保存');
+        else alert('保存失败');
+    };
+
+    // 只获取支出数据
+    async function loadData() {
+        try { 
+            const res = await fetch('/api/monthly_summary'); 
+            const data = await res.json(); 
+            if(data.data?.length) Plotly.newPlot('chart', [{ values: data.data.map(d=>d.total), labels: data.data.map(d=>d.category), type: 'pie', hole: 0.4 }]); 
+            else document.getElementById('chart').innerHTML = '<p class="text-center">暂无支出数据</p>'; 
+        } catch(e) {}
+        try { 
+            const ai = await fetch('/api/ai_suggestion'); 
+            const aiData = await ai.json(); 
+            document.getElementById('ai-suggestion').innerHTML = aiData.suggestion; 
+        } catch(e) { 
+            document.getElementById('ai-suggestion').innerHTML = '💡 合理规划预算'; 
+        }
+        try { 
+            const bills = await fetch('/api/bills'); 
+            const bd = await bills.json(); 
+            const tbody = document.querySelector('#history-table tbody'); 
+            tbody.innerHTML = ''; 
+            // 只显示支出
+            const expenseBills = (bd.data || []).filter(b => b.type === 'expense' || !INCOME_CATEGORIES.includes(b.category));
+            if(expenseBills.length) {
+                expenseBills.slice(0,10).forEach(b => tbody.innerHTML += `<tr><td>${b.date}</td><td>${b.merchant||'-'}</td><td>${b.category}</td><td class="text-end text-danger">¥${b.amount}</td></tr>`);
+            } else {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center">暂无支出记录</td></tr>';
+            }
+        } catch(e) {}
+    }
+
+    async function loadBudget() {
+        try { const res = await fetch('/api/budget'); const data = await res.json(); document.getElementById('b-total').value = data.total_budget; document.getElementById('b-food').value = data.category_budget?.餐饮||0; document.getElementById('b-trans').value = data.category_budget?.交通||0; document.getElementById('b-shop').value = data.category_budget?.购物||0; const stat = await fetch('/api/budget_status'); const s = await stat.json(); document.getElementById('prog-total').innerText = `¥${s.total_budget}`; document.getElementById('prog-spend').innerText = `¥${s.current_spend}`; document.getElementById('prog-remain').innerText = `¥${s.remain}`; } catch(e) {}
+    }
+
+    document.getElementById('budget-form').onsubmit = async e => { e.preventDefault(); await fetch('/api/budget', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ total_budget: parseFloat(document.getElementById('b-total').value), category_budget: { 餐饮: parseFloat(document.getElementById('b-food').value), 交通: parseFloat(document.getElementById('b-trans').value), 购物: parseFloat(document.getElementById('b-shop').value) } }) }); alert('预算已保存'); loadBudget(); };
+
+    // 只查询支出
+    async function loadDailyBills() {
+        const date = document.getElementById('view-date').value;
+        if(!date) return;
+        const res = await fetch(`/api/bills?date=${date}`);
+        const data = await res.json();
+        const tbody = document.querySelector('#daily-table tbody');
+        tbody.innerHTML = '';
+        let total = 0;
+        // 只显示支出（type='expense' 或 分类不在收入列表中）
+        const expenseBills = (data.data || []).filter(b => b.type === 'expense' || !INCOME_CATEGORIES.includes(b.category));
+        if(expenseBills.length) {
+            expenseBills.forEach(b => {
+                total += b.amount;
+                tbody.innerHTML += `<tr><td>${b.date}</td><td>${b.merchant||'-'}</td><td>${b.category}</td><td class="text-danger">¥${b.amount}</td><td>${b.remark||''}</td></tr>`;
+            });
+        } else {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center">暂无支出记录</td></tr>';
+        }
+        document.getElementById('daily-total').innerText = total.toFixed(2);
+    }
+
+    // 只查询支出
+    async function loadMonthlyBills() {
+        const y = document.getElementById('m-year').value, m = document.getElementById('m-month').value;
+        if(!y||!m) return;
+        const res = await fetch(`/api/bills?year=${y}&month=${m}`);
+        const data = await res.json();
+        
+        // 只统计支出
+        const expenseBills = (data.data || []).filter(b => b.type === 'expense' || !INCOME_CATEGORIES.includes(b.category));
+        const total = expenseBills.reduce((sum, b) => sum + b.amount, 0);
+        
+        document.getElementById('month-total-display').innerText = `¥${total.toFixed(2)}`;
+        const daysInMonth = new Date(y, m, 0).getDate();
+        const avg = total / daysInMonth;
+        document.getElementById('month-avg-display').innerText = `¥${avg.toFixed(2)}`;
+        
+        const tbody = document.querySelector('#month-table tbody');
+        tbody.innerHTML = '';
+        let maxAmount = 0;
+        if(expenseBills.length) {
+            expenseBills.forEach(b => {
+                if(b.amount > maxAmount) maxAmount = b.amount;
+                tbody.innerHTML += `<tr><td>${b.date}</td><td>${b.merchant||'-'}</td><td>${b.category}</td><td class="text-danger">¥${b.amount}</td><td>${b.remark||''}</td></tr>`;
+            });
+            document.getElementById('month-max-display').innerText = `¥${maxAmount.toFixed(2)}`;
+        } else {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center">暂无支出记录</td></tr>';
+            document.getElementById('month-max-display').innerText = '¥0';
+        }
+    }
+
+   async function loadMonthlyTrend() {
+    try {
+        const res = await fetch('/api/bills');
+        const data = await res.json();
+        const expenseBills = (data.data || []).filter(b => b.type === 'expense');
+        
+        const monthlyData = {};
+        expenseBills.forEach(b => {
+            const month = b.date.substring(0, 7);  // 格式：2026-05
+            if(!monthlyData[month]) monthlyData[month] = 0;
+            monthlyData[month] += b.amount;
+        });
+        
+        // 按月份排序
+        const sortedMonths = Object.keys(monthlyData).sort();
+        // 转换成显示格式：5月、6月
+        const monthLabels = sortedMonths.map(m => `${parseInt(m.substring(5))}月`);
+        const values = sortedMonths.map(m => monthlyData[m]);
+        
+        if(sortedMonths.length > 0) {
+            Plotly.newPlot('monthly-trend-chart', [{
+                x: monthLabels,
+                y: values,
+                type: 'scatter',
+                mode: 'lines+markers',
+                line: { color: '#f5576c', width: 3 },
+                marker: { size: 8, color: '#667eea' }
+            }], {
+                title: '月度支出趋势',
+                xaxis: { 
+                    title: '月份',
+                    tickangle: 0,
+                    dtick: 1
+                },
+                yaxis: { 
+                    title: '支出金额 (¥)',
+                    tickprefix: '¥'
+                },
+                plot_bgcolor: '#fff',
+                paper_bgcolor: '#fff',
+                margin: { t: 50, l: 60, r: 30, b: 40 }
+            });
+        } else {
+            document.getElementById('monthly-trend-chart').innerHTML = '<p class="text-center text-muted">暂无支出数据</p>';
+        }
+    } catch(e) { 
+        console.log('趋势图加载失败', e);
+        document.getElementById('monthly-trend-chart').innerHTML = '<p class="text-center text-muted">加载失败</p>';
+    }
+}
+
+    async function loadUser() { try { const res = await fetch('/api/me'); const data = await res.json(); document.getElementById('username-display').innerText = data.username; document.getElementById('acc-username').value = data.username; } catch(e) {} }
+
+    // 只加载收入数据
+    async function loadIncome() {
+        try {
+            const res = await fetch('/api/bills');
+            const data = await res.json();
+            const allBills = data.data || [];
+            // 只显示收入（type='income' 或 分类在收入列表中）
+            const incomeBills = allBills.filter(b => b.type === 'income' || INCOME_CATEGORIES.includes(b.category));
+            const now = new Date();
+            const currentMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+            let totalIncome = 0;
+            const incomeRows = [];
+            incomeBills.forEach(b => {
+                if(b.date?.startsWith(currentMonth)) {
+                    totalIncome += b.amount;
+                    incomeRows.push(b);
+                }
+            });
+            document.getElementById('income-stats').innerHTML = `💰 本月收入：¥${totalIncome.toFixed(2)}`;
+            const tbody = document.querySelector('#income-table tbody');
+            if(incomeRows.length) {
+                tbody.innerHTML = incomeRows.map(b => `
+                    <tr>
+                        <td>${b.date}</td>
+                        <td>${b.category}</td>
+                        <td class="text-success fw-bold">+¥${b.amount}</td>
+                        <td>${b.remark || ''}</td>
+                    </tr>
+                `).join('');
+            } else {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center">暂无收入记录</tr>';
+            }
+        } catch(e) { console.log('收入加载失败', e); }
+    }
+
+    // 收入表单提交
+    document.getElementById('income-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const amount = document.getElementById('income-amount').value;
+        const category = document.getElementById('income-category').value;
+        const remark = document.getElementById('income-remark').value;
+        if (!amount || amount <= 0) {
+            alert('请输入有效的金额');
+            return;
+        }
+        const success = await saveIncome(amount, category, remark);
+        if (success) {
+            alert('收入添加成功！');
+            document.getElementById('income-amount').value = '';
+            document.getElementById('income-remark').value = '';
+            loadIncome();
+            loadBudget();
+            loadData();
+        } else {
+            alert('添加失败，请重试');
+        }
+    });
+
+    // 初始化
+    document.getElementById('view-date').valueAsDate = new Date();
+    document.getElementById('m-year').value = new Date().getFullYear();
+    document.getElementById('m-month').value = new Date().getMonth() + 1;
+    loadUser(); loadData(); loadBudget(); loadDailyBills(); loadMonthlyBills(); loadIncome(); loadMonthlyTrend();
+</script>
+</body>
+</html>
