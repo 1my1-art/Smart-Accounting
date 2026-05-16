@@ -177,7 +177,7 @@ def login():
                     return redirect(url_for("index"))
                 flash("账号或密码错误", "danger")
                 return redirect(url_for("login"))
-    return render_template("login.html")
+   return render_template('index.html', template_folder='.')
 
 @app.route("/logout")
 def logout():
