@@ -9,6 +9,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from aip import AipOcr
 import pandas as pd
+from flask_cors import CORS
+CORS(app)
 
 app = Flask(__name__)
 app.secret_key = "dev-secret-key-123456"
