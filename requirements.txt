@@ -7,3 +7,5 @@ requests
 openpyxl
 chardet
 flask
+gunicorn
+flask-cors
